@@ -2,7 +2,7 @@
 #include <windows.h>
 #include <GL/GL.h>
 #include "glext.h"
-#include <sgg.h>
+#include <slib.h>
 
 global b32 GlobalRunning;
 
@@ -142,9 +142,9 @@ LoadGLFunctions()
 }
 
 global GLfloat TriangleVerts[] = {
-    -0.8f, -0.8f, 0.0f,
-    0.8f, -0.8f, 0.0f,
-    0.0f,  0.8f, 0.0f,
+    -0.5f, -0.5f, 0.0f,
+    0.5f, -0.5f, 0.0f,
+    0.0f,  0.5f, 0.0f,
 };
     
 global GLuint VertexBuffer;
@@ -210,7 +210,6 @@ WinMain(HINSTANCE instance,
             HDC DeviceContext = GetDC(Window);
 
             HGLRC GLRenderContext = InitializeOpenGL(Window, DeviceContext);
-            MessageBoxA(0,(char*)glGetString(GL_VERSION), "OPENGL VERSION",0);
 
             GlobalRunning = true;
 

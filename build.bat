@@ -20,6 +20,6 @@ IF %release%==1 (set compilerFlags= %releaseCompilerFlags%)
 IF NOT EXIST bin mkdir bin
 pushd bin
 
-cl %compilerFlags% /I w:\engine\src ..\src\win32.cpp /link %commonLinkerFlags% %win32Libraries%
+cl %compilerFlags% /I w:\slib ..\src\win32.cpp /link %commonLinkerFlags% %win32Libraries%
 
 popd
