@@ -4,7 +4,56 @@
 #include "glext.h"
 #include <slib.h>
 
+struct graphics_buffer
+{
+    void *Memory;
+    u32 Width;
+    u32 Height;
+    u32 Pitch;
+};
+
+internal void
+SetupBuffer(graphics_buffer *Buffer, u32 Width, u32 Height)
+{
+    if(Buffer->Memory)
+    {
+        VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
+    }
+
+    Buffer->Width = Width;
+    Buffer->Height = Height;
+
+    u32 BytesPerPixel = 4;
+    u32 BitmapMemorySize = (Buffer->Width*Buffer->Height)*BytesPerPixel;
+    Buffer->Memory = VirtualAlloc(0, BitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+    Buffer->Pitch = Width*BytesPerPixel;
+}
+
+internal void
+RenderWeirdGradient(graphics_buffer *Buffer, s32 BlueOffset, s32 GreenOffset)
+{
+    u8 *Row = (u8 *)Buffer->Memory;    
+    for(u32 Y = 0;
+        Y < Buffer->Height;
+        ++Y)
+    {
+        u32 *Pixel = (u32 *)Row;
+        for(u32 X = 0;
+            X < Buffer->Width;
+            ++X)
+        {
+            u8 Blue = (u8)(X + BlueOffset);
+            u8 Green = (u8)(Y + GreenOffset);
+
+            *Pixel++ = ((Green << 8) | Blue);
+        }
+        
+        Row += Buffer->Pitch;
+    }
+}
+
 global b32 GlobalRunning;
+global graphics_buffer GlobalGraphicsBuffer = {};
 
 internal LRESULT CALLBACK
 MainWindowCallback(HWND Window,
@@ -130,6 +179,14 @@ PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
 PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
 PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
 
+PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers;
+PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
+PFNGLGENRENDERBUFFERSPROC glGenRenderbuffers;
+PFNGLBINDRENDERBUFFERPROC glBindRenderbuffer;
+PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage;
+PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
+PFNGLBLITFRAMEBUFFERPROC glBlitFramebuffer;
+
 internal void
 LoadGLFunctions()
 {
@@ -139,45 +196,53 @@ LoadGLFunctions()
     glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress("glVertexAttribPointer");
     glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glEnableVertexAttribArray");
     glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glDisableVertexAttribArray");
+    glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)wglGetProcAddress("glGenFramebuffers");
+    glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)wglGetProcAddress("glBindFramebuffer");
+    glGenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)wglGetProcAddress("glGenRenderbuffers");
+    glBindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)wglGetProcAddress("glBindRenderbuffer");
+    glRenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)wglGetProcAddress("glRenderbufferStorage");
+    glFramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)wglGetProcAddress("glFramebufferRenderbuffer");
+    glBlitFramebuffer = (PFNGLBLITFRAMEBUFFERPROC)wglGetProcAddress("glBlitFramebuffer");
 }
 
-global GLfloat TriangleVerts[] = {
-    -0.5f, -0.5f, 0.0f,
-    0.5f, -0.5f, 0.0f,
-    0.0f,  0.5f, 0.0f,
-};
+GLuint fbo, rbo;
+
+internal void
+Setup(u32 Width, u32 Height)
+{
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, Width, Height);
     
-global GLuint VertexBuffer;
-
-internal void
-SetupTriangle()
-{
-    glGenBuffers(1, &VertexBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER,
-                 sizeof(TriangleVerts),
-                 TriangleVerts,
-                 GL_STATIC_DRAW);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER,
+                              GL_COLOR_ATTACHMENT0,
+                              GL_RENDERBUFFER,
+                              rbo);
 }
 
+
 internal void
-Render(HGLRC GLRenderContext)
+RenderToScreen(HGLRC GLRenderContext, u32 Width, u32 Height, GLvoid *Pixels)
 {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER,VertexBuffer);
-    glVertexAttribPointer(
-        0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-        3,                  // size
-        GL_FLOAT,           // type
-        GL_FALSE,           // normalized?
-        0,                  // stride
-        (void*)0            // array buffer offset
-                          );
- 
-    glDrawArrays(GL_TRIANGLES, 0, 3); // Starting from vertex 0; 3 vertices total -> 1 triangle
- 
-    glDisableVertexAttribArray(0);
+    glClearColor(0.0, 1.0, 1.0, 0.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glRasterPos2d(0,0);
+    glDrawPixels(Width, Height, GL_RGBA8, GL_UNSIGNED_BYTE, Pixels);
+    
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glDrawBuffer(GL_BACK);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+
+    glBlitFramebuffer(0,0,Width,Height,
+                      0,0,Width,Height,
+                      GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT,
+                      GL_NEAREST);
 }
 
 s32 CALLBACK
@@ -191,6 +256,9 @@ WinMain(HINSTANCE instance,
     WindowClass.lpszClassName = "Win32WindowClass";
     WindowClass.hCursor = LoadCursor(0, IDC_ARROW);
     WindowClass.hIcon = LoadIcon(0, IDI_APPLICATION);
+
+    u32 Width = 100;
+    u32 Height = 100;
 
     if(RegisterClassA(&WindowClass))
     {
@@ -214,14 +282,21 @@ WinMain(HINSTANCE instance,
             GlobalRunning = true;
 
             LoadGLFunctions();
-            SetupTriangle();
-            glClearColor(0.0f,1.0f,0.0f,1.0f);
+            Setup(Width, Height);
+
+            u32 XOffset = 0, YOffset = 0;
 
             while(GlobalRunning)
             {
                 ProcessPendingMessages();
-                Render(GLRenderContext);
+
+                RenderWeirdGradient(&GlobalGraphicsBuffer, XOffset, YOffset);
+               
+                RenderToScreen(GLRenderContext, Width, Height, GlobalGraphicsBuffer.Memory);
                 SwapBuffers(DeviceContext);
+
+                ++XOffset;
+                YOffset += 2;
             }
             
             wglMakeCurrent(DeviceContext, 0);
