@@ -123,22 +123,24 @@ InitializeOpenGL(HWND Window, HDC DeviceContext)
     return GLRenderContext;
 }
 
-PFNGLGENBUFFERSPROC glGenBuffers;
-PFNGLBINDBUFFERPROC glBindBuffer;
-PFNGLBUFFERDATAPROC glBufferData;
-PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
-PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
+#define GLEXT_LIST(code) \
+    code(glGenBuffers, GLGENBUFFERS) \
+    code(glBindBuffer, GLBINDBUFFER) \
+    code(glBufferData, GLBUFFERDATA) \
+    code(glVertexAttribPointer, GLVERTEXATTRIBPOINTER) \
+    code(glEnableVertexAttribArray, GLENABLEVERTEXATTRIBARRAY) \
+    code(glDisableVertexAttribArray, GLDISABLEVERTEXATTRIBARRAY) \
+
+#define DEFINE_GLEXT_DECLARATIONS(type, TYPE) PFN##TYPE##PROC type;
+GLEXT_LIST(DEFINE_GLEXT_DECLARATIONS);
+#undef DEFINE_GLEXT_DECLARATIONS
 
 internal void
 LoadGLFunctions()
 {
-    glGenBuffers = (PFNGLGENBUFFERSPROC) wglGetProcAddress("glGenBuffers");
-    glBindBuffer = (PFNGLBINDBUFFERPROC) wglGetProcAddress("glBindBuffer");
-    glBufferData = (PFNGLBUFFERDATAPROC) wglGetProcAddress("glBufferData");;
-    glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress("glVertexAttribPointer");
-    glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glEnableVertexAttribArray");
-    glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glDisableVertexAttribArray");
+#define DEFINE_GET_GLEXT_PROC(type, TYPE) type = (PFN##TYPE##PROC)wglGetProcAddress(#type);
+    GLEXT_LIST(DEFINE_GET_GLEXT_PROC);
+#undef DEFINE_GET_GLEXT_PROC
 }
 
 global GLfloat TriangleVerts[] = {
